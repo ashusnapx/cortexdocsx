@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  # ─── PostgreSQL Database ─────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: cortexdocs-postgres
+    environment:
+      POSTGRES_USER: cortexdocs
+      POSTGRES_PASSWORD: cortexdocs
+      POSTGRES_DB: cortexdocs
+    ports:
+      - "5432:5432"
+    volumes:
+      - cortexdocs_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cortexdocs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ─── FastAPI Backend ─────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cortexdocs-backend
+    env_file:
+      - .env.example
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cortexdocs:cortexdocs@postgres:5432/cortexdocs
+      FAISS_INDEX_DIR: /app/data/faiss
+      BM25_INDEX_DIR: /app/data/bm25
+      UPLOAD_DIR: /app/data/uploads
+    ports:
+      - "8000:8000"
+    volumes:
+      - cortexdocs_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── Next.js Frontend ───────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cortexdocs-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  cortexdocs_pgdata:
+    driver: local
+  cortexdocs_data:
+    driver: local
