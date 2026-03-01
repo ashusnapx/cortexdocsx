@@ -354,7 +354,106 @@ class OpenAICompatibleProvider:
         return self._circuit_breaker
 
 
-def create_llm_provider() -> MockLLMProvider | OpenAICompatibleProvider:
+class GeminiProvider:
+    """
+    WHAT: Google Gemini LLM provider with retry and circuit breaker.
+    WHY: Handles native integration with gemini-2.5-flash-lite via google-genai SDK.
+    """
+
+    def __init__(self) -> None:
+        self._settings = get_settings()
+        self._circuit_breaker = CircuitBreaker()
+        import os
+        from google import genai
+        # Initialize the synchronous underlying client. 
+        # For true async in google-genai you use client.aio
+        self._client = genai.Client(api_key=self._settings.LLM_API_KEY)
+
+    async def generate(
+        self, prompt: str, system_prompt: str, max_tokens: int = 2048
+    ) -> str:
+        """Generate a response using Google GenAI."""
+        if not self._circuit_breaker.can_execute():
+            raise RuntimeError("Circuit breaker is OPEN — LLM calls blocked")
+
+        import httpx
+        from tenacity import (
+            retry,
+            retry_if_exception_type,
+            stop_after_attempt,
+            wait_exponential,
+        )
+        from google.genai.errors import APIError
+
+        @retry(
+            stop=stop_after_attempt(self._settings.LLM_RETRY_MAX_ATTEMPTS),
+            wait=wait_exponential(
+                multiplier=self._settings.LLM_RETRY_MULTIPLIER,
+                min=self._settings.LLM_RETRY_MIN_WAIT,
+                max=self._settings.LLM_RETRY_MAX_WAIT,
+            ),
+            retry=retry_if_exception_type((httpx.TimeoutException, APIError)),
+        )
+        async def _call_api() -> str:
+            response = await self._client.aio.models.generate_content(
+                model=self._settings.LLM_MODEL_NAME,
+                contents=prompt,
+                config={
+                    "system_instruction": system_prompt,
+                    "max_output_tokens": max_tokens,
+                    "temperature": self._settings.LLM_TEMPERATURE,
+                },
+            )
+            return response.text
+
+        try:
+            result = await _call_api()
+            self._circuit_breaker.record_success()
+            return result
+        except Exception as e:
+            self._circuit_breaker.record_failure()
+            raise
+
+    async def generate_stream(
+        self, prompt: str, system_prompt: str, max_tokens: int = 2048
+    ) -> AsyncGenerator[str, None]:
+        """Stream response from Google GenAI API."""
+        if not self._circuit_breaker.can_execute():
+            raise RuntimeError("Circuit breaker is OPEN — LLM calls blocked")
+
+        try:
+            response_stream = await self._client.aio.models.generate_content_stream(
+                model=self._settings.LLM_MODEL_NAME,
+                contents=prompt,
+                config={
+                    "system_instruction": system_prompt,
+                    "max_output_tokens": max_tokens,
+                    "temperature": self._settings.LLM_TEMPERATURE,
+                },
+            )
+            async for chunk in response_stream:
+                if chunk.text:
+                    yield chunk.text
+
+            self._circuit_breaker.record_success()
+        except Exception as e:
+            self._circuit_breaker.record_failure()
+            raise
+
+    async def health_check(self) -> dict:
+        return {
+            "provider": "gemini",
+            "status": "ok" if self._settings.LLM_API_KEY else "no_api_key",
+            "model": self._settings.LLM_MODEL_NAME,
+            "circuit_breaker": self._circuit_breaker.get_status(),
+        }
+
+    @property
+    def circuit_breaker(self) -> CircuitBreaker:
+        return self._circuit_breaker
+
+
+def create_llm_provider() -> MockLLMProvider | OpenAICompatibleProvider | GeminiProvider:
     """
     WHAT: Factory function for creating the configured LLM provider.
     WHY: Reads LLM_PROVIDER from settings to determine which implementation.
@@ -363,6 +462,9 @@ def create_llm_provider() -> MockLLMProvider | OpenAICompatibleProvider:
     if settings.LLM_PROVIDER == "openai":
         logger.info("llm_provider_created", provider="openai_compatible")
         return OpenAICompatibleProvider()
+    elif settings.LLM_PROVIDER == "gemini":
+        logger.info("llm_provider_created", provider="gemini")
+        return GeminiProvider()
     else:
         logger.info("llm_provider_created", provider="mock")
         return MockLLMProvider()

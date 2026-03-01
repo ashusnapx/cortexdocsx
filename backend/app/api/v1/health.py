@@ -109,3 +109,24 @@ async def health_check():
     }
 
     return ApiResponse.ok(checks) if all_ok else ApiResponse.ok(checks)
+
+
+@router.get("/config", response_model=ApiResponse[dict])
+async def get_config():
+    """
+    WHAT: Frontend dynamic UI capability config endpoint.
+    WHY: Required by the frontend DynamicQueryPanel to paint boundaries and defaults.
+    """
+    return ApiResponse.ok({
+        "hyperparameters": {
+            "alpha": {"min": 0.0, "max": 1.0, "step": 0.1, "default": 0.7},
+            "beta": {"min": 0.0, "max": 1.0, "step": 0.1, "default": 0.3},
+            "reranking": {"default": True},
+            "hybrid": {"default": True}
+        },
+        "limits": {
+            "max_file_size_mb": 50,
+            "max_pages_per_document": 500,
+            "allowed_mime_types": ["application/pdf"]
+        }
+    })

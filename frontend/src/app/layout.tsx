@@ -1,14 +1,28 @@
 import type { Metadata } from "next";
+import { IBM_Plex_Mono, Sora } from "next/font/google";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "CortexDocs ∞ — AI Retrieval Engine",
-  description:
-    "Production-grade, fully observable, resilient multi-document AI retrieval engine",
-};
+const sora = Sora({
+  subsets: ["latin"],
+  variable: "--font-sora",
+  display: "swap",
+});
 
-import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
+  display: "swap",
+});
+
+import { AppQueryProvider } from "@/app/providers/query-provider";
+import { AppLayout } from "@/shared/components/layout/AppLayout";
+
+export const metadata: Metadata = {
+  title: "CortexDocs ∞ | Sovereign Intelligence",
+  description:
+    "Production-grade, fully observable multi-document AI retrieval engine.",
+};
 
 export default function RootLayout({
   children,
@@ -17,22 +31,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang='en'>
-      <head>
-        <link rel='preconnect' href='https://fonts.googleapis.com' />
-        <link
-          rel='preconnect'
-          href='https://fonts.gstatic.com'
-          crossOrigin='anonymous'
-        />
-        <link
-          href='https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap'
-          rel='stylesheet'
-        />
-      </head>
-      <body className='antialiased font-sans bg-white text-gray-900'>
-        <Navbar />
-        <main className='min-h-screen'>{children}</main>
-        <Footer />
+      <body
+        className={`${sora.variable} ${plexMono.variable} antialiased font-sans bg-background text-foreground`}
+      >
+        <AppQueryProvider>
+          <AppLayout>{children}</AppLayout>
+        </AppQueryProvider>
       </body>
     </html>
   );

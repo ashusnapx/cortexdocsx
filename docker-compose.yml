@@ -27,7 +27,7 @@ services:
       dockerfile: Dockerfile
     container_name: cortexdocs-backend
     env_file:
-      - .env.example
+      - ./backend/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://cortexdocs:cortexdocs@postgres:5432/cortexdocs
       FAISS_INDEX_DIR: /app/data/faiss
